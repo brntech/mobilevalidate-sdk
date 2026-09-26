@@ -152,7 +152,7 @@ Local stdio:
 - **Streamable HTTP:** URL `https://mcp.mobilevalidate.com/mcp`, header `Authorization: Bearer mv_agent_…`. The
   server is stateless: `POST` only, JSON responses, no session id.
 - **stdio:** command `npx`, args `["-y", "@mobilevalidate/mcp"]`, env `MOBILEVALIDATE_API_KEY=mv_agent_…`.
-  To pin a version use `@mobilevalidate/mcp@1.0.2`. After `npm install -g @mobilevalidate/mcp` the command is
+  To pin a version use `@mobilevalidate/mcp@1.0.3`. After `npm install -g @mobilevalidate/mcp` the command is
   `mobilevalidate-mcp`.
 
 ## Tools

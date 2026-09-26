@@ -8,7 +8,7 @@ import { normalizeNumbers } from "./normalize.ts";
 import { fromMicro, log, toMicro } from "./util.ts";
 
 export const SERVER_NAME = "mobilevalidate";
-export const SERVER_VERSION = "1.0.2";
+export const SERVER_VERSION = "1.0.3";
 
 /** The subset of the SDK the tools use (lets tests inject a mock). */
 export type Sdk = Pick<MobileValidate, "lookup" | "services" | "jobs" | "account" | "limits">;

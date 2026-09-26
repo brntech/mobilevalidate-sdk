@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mobilevalidate-sdk"
-version = "1.0.1"
+version = "1.0.2"
 description = "MobileValidate API client: check phone numbers on WhatsApp, Telegram, Viber and more, carrier lookup, spam reputation and e-mail verification. Sync + async, typed."
 readme = "README.md"
 requires-python = ">=3.9"
