@@ -1,0 +1,65 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.mobilevalidate/mcp",
+  "title": "MobileValidate",
+  "description": "Check phone numbers (WhatsApp, Telegram, carrier, spam reputation) and e-mail addresses.",
+  "version": "1.0.2",
+  "websiteUrl": "https://mobilevalidate.com/docs/mcp",
+  "repository": {
+    "url": "https://github.com/brntech/mobilevalidate-sdk",
+    "source": "github",
+    "subfolder": "mcp"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@mobilevalidate/mcp",
+      "version": "1.0.2",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "MOBILEVALIDATE_API_KEY",
+          "description": "MobileValidate agent key (mv_agent_…, scoped and spend-capped) or test key (mv_test_…). Live keys are rejected.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string",
+          "placeholder": "mv_agent_..."
+        },
+        {
+          "name": "MCP_CONFIRM_ABOVE_USD",
+          "description": "Spend above this amount (USD) needs the user's explicit confirmation.",
+          "isRequired": false,
+          "format": "string",
+          "default": "1.00"
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.mobilevalidate.com/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer token: a MobileValidate agent key (mv_agent_…) or test key (mv_test_…).",
+          "value": "Bearer {api_key}",
+          "isRequired": true,
+          "isSecret": true,
+          "variables": {
+            "api_key": {
+              "description": "MobileValidate agent key (mv_agent_…) or test key (mv_test_…).",
+              "isRequired": true,
+              "isSecret": true,
+              "placeholder": "mv_agent_..."
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

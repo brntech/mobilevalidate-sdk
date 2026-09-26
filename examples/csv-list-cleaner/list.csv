@@ -1,0 +1,7 @@
+name,phone,email
+Ann,+447700900001,registered@test.mobilevalidate.com
+Ben,+447700900002,not-registered@test.mobilevalidate.com
+Cleo,+447700900003,unknown@test.mobilevalidate.com
+Dan,+447700900004,
+Eve,+447700900001,
+Finn,,pending@test.mobilevalidate.com

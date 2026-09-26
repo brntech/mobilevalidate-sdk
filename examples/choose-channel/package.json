@@ -1,0 +1,8 @@
+{
+  "name": "mobilevalidate-example-choose-channel",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node choose-channel.mjs", "test": "node --test" },
+  "dependencies": { "mobilevalidate": "^1.0.0" },
+  "engines": { "node": ">=18" }
+}

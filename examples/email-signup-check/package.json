@@ -1,0 +1,8 @@
+{
+  "name": "mobilevalidate-example-email-signup-check",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node email-check.mjs", "test": "node --test" },
+  "dependencies": { "mobilevalidate": "^1.0.0" },
+  "engines": { "node": ">=18" }
+}

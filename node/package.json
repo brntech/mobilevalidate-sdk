@@ -1,0 +1,96 @@
+{
+  "name": "mobilevalidate",
+  "version": "1.0.0",
+  "description": "MobileValidate API client and CLI: check phone numbers on WhatsApp, Telegram, Viber and more, carrier lookup, spam reputation and e-mail verification. Typed errors, retries, zero dependencies. ESM + CommonJS.",
+  "keywords": [
+    "phone validation",
+    "phone number",
+    "whatsapp check",
+    "telegram",
+    "viber",
+    "hlr",
+    "carrier lookup",
+    "line type",
+    "spam reputation",
+    "email verification",
+    "mcp",
+    "api client",
+    "sdk",
+    "cli",
+    "sandbox",
+    "webhooks"
+  ],
+  "homepage": "https://mobilevalidate.com/docs/sdk",
+  "bugs": {
+    "url": "https://github.com/brntech/mobilevalidate-sdk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brntech/mobilevalidate-sdk.git",
+    "directory": "node"
+  },
+  "license": "MIT",
+  "author": "MobileValidate (BroadNet Technologies Inc.)",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./webhooks": "./src/webhooks.ts",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "mobilevalidate": "./src/cli.ts"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "main": "./dist/cjs/index.cjs",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/cjs/index.d.cts",
+          "default": "./dist/cjs/index.cjs"
+        }
+      },
+      "./webhooks": {
+        "import": {
+          "types": "./dist/webhooks.d.ts",
+          "default": "./dist/webhooks.js"
+        },
+        "require": {
+          "types": "./dist/cjs/webhooks.d.cts",
+          "default": "./dist/cjs/webhooks.cjs"
+        }
+      },
+      "./package.json": "./package.json"
+    },
+    "bin": {
+      "mobilevalidate": "./dist/cli.js"
+    },
+    "module": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepack": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "gen:services": "tsx scripts/gen-services.ts",
+    "gen:collections": "node scripts/gen-collections.mjs"
+  },
+  "dependencies": {}
+}

@@ -1,0 +1,14 @@
+{
+  "name": "mobilevalidate-example-otp-guard-express",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "mobilevalidate": "^1.0.0"
+  },
+  "engines": { "node": ">=18" }
+}

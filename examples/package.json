@@ -1,0 +1,13 @@
+{
+  "name": "mobilevalidate-examples",
+  "private": true,
+  "type": "module",
+  "description": "Tested recipes for the MobileValidate API: OTP/sign-up guard, list cleaning, webhooks, channel choice, e-mail checks.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node test/run.mjs",
+    "test:live": "LIVE=1 node test/run.mjs",
+    "mock-api": "node test/mock-api.mjs"
+  },
+  "engines": { "node": ">=22.18" }
+}

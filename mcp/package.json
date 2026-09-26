@@ -1,0 +1,84 @@
+{
+  "name": "@mobilevalidate/mcp",
+  "version": "1.0.2",
+  "mcpName": "com.mobilevalidate/mcp",
+  "description": "MobileValidate MCP server (stdio + Streamable HTTP): let AI agents check phone numbers on WhatsApp, Telegram and more, carrier, spam reputation and e-mails.",
+  "keywords": [
+    "mcp",
+    "model context protocol",
+    "mcp server",
+    "phone validation",
+    "whatsapp check",
+    "hlr",
+    "carrier lookup",
+    "spam reputation",
+    "email verification",
+    "api client",
+    "ai agents",
+    "claude",
+    "cursor"
+  ],
+  "homepage": "https://mobilevalidate.com/docs/mcp",
+  "bugs": {
+    "url": "https://github.com/brntech/mobilevalidate-sdk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brntech/mobilevalidate-sdk.git",
+    "directory": "mcp"
+  },
+  "license": "MIT",
+  "author": "MobileValidate (BroadNet Technologies Inc.)",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "mobilevalidate-mcp": "./src/stdio.ts",
+    "mobilevalidate-mcp-http": "./src/http-server.ts"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "server.json"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "bin": {
+      "mobilevalidate-mcp": "./dist/stdio.js",
+      "mobilevalidate-mcp-http": "./dist/http-server.js"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepack": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "start": "tsx src/http.ts",
+    "start:stdio": "tsx src/stdio.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "mobilevalidate": "workspace:*",
+    "zod": "4.6.5"
+  }
+}
