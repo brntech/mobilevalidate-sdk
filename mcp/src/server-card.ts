@@ -3,10 +3,10 @@
 // the extension is still experimental). Served unauthenticated at GET <streamable-http-url>/server-card
 // (https://mcp.mobilevalidate.com/mcp/server-card) and mirrored by the website at /.well-known/mcp/server-card.json.
 // Public metadata only: identity, remote endpoint, auth header, protocol versions. No tools, prices or internals.
+// Complements 2026-07-28 `server/discover` (served on /mcp itself): the card is readable without a key and without MCP.
 // Name/title/description/version stay identical to server.json (MCP Registry) — test/server-card.test.ts enforces it.
 import { createHash } from "node:crypto";
-import { SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js";
-import { SERVER_VERSION } from "./tools.ts";
+import { PROTOCOL_VERSIONS, SERVER_VERSION } from "./tools.ts";
 
 export const SERVER_CARD_SCHEMA = "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json";
 export const SERVER_CARD_MEDIA_TYPE = "application/mcp-server-card+json";
@@ -51,7 +51,7 @@ export function serverCard(opts: { mcpUrl?: string; siteUrl?: string } = {}): Se
         isSecret: true,
         variables: { api_key: { description: "MobileValidate agent key (mv_agent_…) or test key (mv_test_…).", isRequired: true, isSecret: true, placeholder: "mv_agent_..." } },
       }],
-      supportedProtocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
+      supportedProtocolVersions: [...PROTOCOL_VERSIONS], // 2026-07-28 first, then the legacy revisions
     }],
     // Reverse-DNS namespaced; links only (no tool list, no prices — those live in the linked documents).
     _meta: {

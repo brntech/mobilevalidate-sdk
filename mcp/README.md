@@ -152,8 +152,27 @@ Local stdio:
 - **Streamable HTTP:** URL `https://mcp.mobilevalidate.com/mcp`, header `Authorization: Bearer mv_agent_…`. The
   server is stateless: `POST` only, JSON responses, no session id.
 - **stdio:** command `npx`, args `["-y", "@mobilevalidate/mcp"]`, env `MOBILEVALIDATE_API_KEY=mv_agent_…`.
-  To pin a version use `@mobilevalidate/mcp@1.0.3`. After `npm install -g @mobilevalidate/mcp` the command is
+  To pin a version use `@mobilevalidate/mcp@1.1.0`. After `npm install -g @mobilevalidate/mcp` the command is
   `mobilevalidate-mcp`.
+
+### Protocol versions
+
+Both transports speak MCP **2026-07-28** and the handshake-based revisions **2025-11-25**, 2025-06-18, 2025-03-26,
+2024-11-05 and 2024-10-07 (from 1.1.0; 1.0.x stopped at 2025-11-25). Nothing to configure: the client's opening
+message picks the revision.
+
+- **2026-07-28:** no `initialize`; every request carries `_meta` (`io.modelcontextprotocol/protocolVersion`, client
+  info and capabilities) and, over HTTP, the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers (checked
+  against the body; mismatch → `400`, `-32020`). `server/discover` returns the supported versions, capabilities,
+  server identity and instructions. `tools/list` and `server/discover` carry `ttlMs: 3600000, cacheScope: "public"`
+  (the list is the same for every key), and tools come back in a fixed order. An unsupported version gets `400` with
+  `UnsupportedProtocolVersion` (`-32022`) listing the supported ones. Tool calls return JSON (no SSE).
+- **2025-era clients:** `initialize` as before; the hosted server stays stateless (`POST` only, JSON responses, no
+  session id; `GET` → `405`). On stdio the connection stays on the negotiated revision.
+- The server uses no server→client requests (sampling, elicitation, roots) and no protocol logging, so nothing
+  deprecated in 2026-07-28 is involved. Bulk jobs use an explicit `job_id` handle, the pattern the spec recommends now
+  that sessions are gone.
+- The server card's `supportedProtocolVersions` lists the same versions (newest first).
 
 ## Tools
 
@@ -237,7 +256,7 @@ Other rules:
 MCP_HOST=127.0.0.1 MCP_PORT=3300 npx -y -p @mobilevalidate/mcp mobilevalidate-mcp-http   # once published
 ```
 
-`POST /mcp` only (stateless, JSON responses) and `GET /healthz`. Each request's `Authorization: Bearer` key is forwarded
+`POST /mcp` only (stateless, JSON responses, 2026-07-28 and 2025-era clients on the same endpoint) and `GET /healthz`. Each request's `Authorization: Bearer` key is forwarded
 to the API for that request only and never stored. `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, plus any
 value in `MCP_ALLOWED_HOSTS` (DNS-rebinding protection) — set it when you put the server behind a reverse proxy, and
 terminate TLS in front of it. Bodies are limited to 2 MB.
@@ -261,6 +280,11 @@ for HTTP on `127.0.0.1:3300`, `start:stdio` for stdio). The published package co
 pnpm rewrites the `workspace:*` SDK dependency to the exact SDK version — so always pack with **pnpm**
 (`ops/publish-packages.sh`), never plain `npm pack` / `npm publish` from this directory. The build compiles against the
 SDK's `dist/` types, so build the SDK first.
+
+MCP SDK: the server uses the official v2 TypeScript SDK (`@modelcontextprotocol/server`, which implements 2026-07-28
+with dual-era serving: `createMcpHandler` + `isLegacyRequest` for HTTP, `serveStdio` for stdio). The v1 package
+`@modelcontextprotocol/sdk` and `@modelcontextprotocol/client` are **dev dependencies only**: the tests use them as a
+real 2025-11-25 client and a real 2026-07-28 client (`test/protocol.test.ts`).
 
 ```bash
 pnpm --filter @mobilevalidate/mcp run typecheck

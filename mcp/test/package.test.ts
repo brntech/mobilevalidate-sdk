@@ -20,6 +20,6 @@ describe("package metadata (publish readiness)", () => {
     expect(pkg.private).toBeUndefined();
     expect(pkg.files).toEqual(["dist", "README.md", "LICENSE", "server.json"]);
     expect(pkg.publishConfig.bin).toEqual({ "mobilevalidate-mcp": "./dist/stdio.js", "mobilevalidate-mcp-http": "./dist/http-server.js" });
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@modelcontextprotocol/sdk", "mobilevalidate", "zod"]);
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@modelcontextprotocol/server", "mobilevalidate", "zod"]);
   });
 });

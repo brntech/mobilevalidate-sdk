@@ -1,8 +1,12 @@
 // Streamable HTTP transport, stateless: a fresh server per request; the caller's Bearer key is forwarded to the API.
+// Dual-era (MCP spec "Versioning: backward compatibility"): requests carrying the 2026-07-28 per-request `_meta`
+// envelope are served by the SDK's modern handler (createMcpHandler: server/discover, header validation, cache hints);
+// 2025-era traffic (initialize handshake or plain stateless calls, 2024-10-07 … 2025-11-25) is routed with
+// isLegacyRequest to a stateless legacy transport that keeps the JSON responses this server has always returned.
 import { pathToFileURL } from "node:url";
 import { timingSafeEqual } from "node:crypto";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createMcpHandler, isLegacyRequest, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { forwardFor, sdkFor } from "./client.ts";
 import { buildServer, type Sdk } from "./tools.ts";
 import { SERVER_CARD_HEADERS, SERVER_CARD_PATH, serverCardBody } from "./server-card.ts";
@@ -13,6 +17,8 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024; // 50k numbers as JSON fit comfortably.
 export interface HttpOptions {
   /** Extra Host headers accepted besides 127.0.0.1:<port> and localhost:<port> (DNS-rebinding protection). */
   allowedHosts?: string[];
+  /** Browser origins allowed to call /mcp (spec: validate Origin against DNS rebinding). Requests without Origin (non-browser clients) are allowed. */
+  allowedOrigins?: string[];
   makeSdk?: (apiKey: string, ctx: { clientIp: string | null }) => Sdk;
   /**
    * Shared secret with the API (env MV_MCP_FORWARD_SECRET). When set, sandbox-key calls tell the API the end client's
@@ -74,7 +80,7 @@ function serveServerCard(req: IncomingMessage, res: ServerResponse) {
   res.end(req.method === "HEAD" ? undefined : body);
 }
 
-async function readJson(req: IncomingMessage): Promise<unknown> {
+async function readJson(req: IncomingMessage): Promise<{ text: string; json: unknown }> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -82,10 +88,40 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
     if (size > MAX_BODY_BYTES) throw Object.assign(new Error("Request body too large"), { status: 413 });
     chunks.push(chunk as Buffer);
   }
+  const text = Buffer.concat(chunks).toString("utf8");
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return { text, json: JSON.parse(text) };
   } catch {
     throw Object.assign(new Error("Invalid JSON body"), { status: 400 });
+  }
+}
+
+/** node:http request (body already read) → web-standard Request for the SDK; aborted when the client disconnects. */
+function toWebRequest(req: IncomingMessage, body: string, signal: AbortSignal): Request {
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers as IncomingHttpHeaders)) {
+    if (v === undefined) continue;
+    for (const one of Array.isArray(v) ? v : [v]) headers.append(k, one);
+  }
+  return new Request(`http://${req.headers.host ?? "localhost"}${req.url ?? "/mcp"}`, { method: req.method, headers, body, signal });
+}
+
+/** web-standard Response → node:http response (streams SSE bodies; stops when the client goes away). */
+async function sendWebResponse(res: ServerResponse, response: Response): Promise<void> {
+  const headers: Record<string, string | string[]> = {};
+  response.headers.forEach((value, key) => { headers[key] = key === "set-cookie" ? response.headers.getSetCookie() : value; });
+  res.writeHead(response.status, headers);
+  if (!response.body) { res.end(); return; }
+  const reader = response.body.getReader();
+  res.on("close", () => { void reader.cancel().catch(() => {}); });
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!res.write(value)) await new Promise<void>((r) => res.once("drain", r).once("close", r));
+    }
+  } finally {
+    res.end();
   }
 }
 
@@ -104,6 +140,8 @@ export function createHttpServer(opts: HttpOptions = {}): Server {
     if (path === SERVER_CARD_PATH) { serveServerCard(req, res); return; }
     if (path !== "/mcp") { jsonRpcError(res, 404, "Not found. The MCP endpoint is /mcp."); return; }
     if (!hostAllowed(req.headers.host ?? "")) { jsonRpcError(res, 403, "Host not allowed."); return; }
+    const origin = req.headers.origin;
+    if (origin !== undefined && !(opts.allowedOrigins ?? []).includes(origin)) { jsonRpcError(res, 403, "Origin not allowed."); return; }
     if (req.method !== "POST") { jsonRpcError(res, 405, "Method not allowed (stateless server: POST only).", { allow: "POST" }); return; }
 
     const auth = req.headers.authorization ?? "";
@@ -113,7 +151,7 @@ export function createHttpServer(opts: HttpOptions = {}): Server {
       return;
     }
 
-    let body: unknown;
+    let body: { text: string; json: unknown };
     try {
       body = await readJson(req);
     } catch (e) {
@@ -121,15 +159,38 @@ export function createHttpServer(opts: HttpOptions = {}): Server {
       return;
     }
 
-    const server = buildServer(makeSdk(key.key, { clientIp: endClientIp(req, header, opts.edgeSecret) }));
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-    res.on("close", () => { void transport.close(); void server.close(); });
+    // One SDK client (one key) per request; every server instance below is built for this request only.
+    const sdk = makeSdk(key.key, { clientIp: endClientIp(req, header, opts.edgeSecret) });
+    const abort = new AbortController();
+    res.on("close", () => abort.abort());
+    const request = toWebRequest(req, body.text, abort.signal);
+    const closers: (() => Promise<void>)[] = [];
+    res.on("close", () => { for (const close of closers) void close().catch(() => {}); });
     try {
-      await server.connect(transport);
-      await transport.handleRequest(req, res, body);
+      let response: Response;
+      if (await isLegacyRequest(request.clone(), body.json)) {
+        // 2025-era: stateless (no session id), JSON responses — unchanged behaviour for existing clients.
+        const server = buildServer(sdk);
+        const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+        closers.push(() => transport.close(), () => server.close());
+        await server.connect(transport);
+        response = await transport.handleRequest(request, { parsedBody: body.json });
+      } else {
+        // 2026-07-28: the SDK validates the envelope and the MCP-Protocol-Version / Mcp-Method / Mcp-Name headers,
+        // answers server/discover and attaches the cache hints. JSON responses; a subscriptions/listen stream (the
+        // tool list never changes at runtime) is bounded and closed with the request.
+        const handler = createMcpHandler(() => buildServer(sdk), {
+          legacy: "reject", responseMode: "json", maxSubscriptions: 16,
+          onerror: (e) => log("mcp request rejected", { error: e.message }),
+        });
+        closers.push(() => handler.close());
+        response = await handler.fetch(request, { parsedBody: body.json });
+      }
+      await sendWebResponse(res, response);
     } catch (e) {
       log("http request failed", { error: (e as Error).message });
       if (!res.headersSent) jsonRpcError(res, 500, "Internal error");
+      else res.end();
     }
   });
   return server;
@@ -144,7 +205,8 @@ export function startHttpServerFromEnv(env: Record<string, string | undefined> =
   const host = env.MCP_HOST ?? "127.0.0.1";
   const port = Number(env.MCP_PORT ?? 3300);
   const extra = (env.MCP_ALLOWED_HOSTS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  return createHttpServer({ allowedHosts: extra, forwardSecret: env.MV_MCP_FORWARD_SECRET || null, clientIpHeader: env.MCP_CLIENT_IP_HEADER,
+  const origins = (env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return createHttpServer({ allowedHosts: extra, allowedOrigins: origins, forwardSecret: env.MV_MCP_FORWARD_SECRET || null, clientIpHeader: env.MCP_CLIENT_IP_HEADER,
     edgeSecret: env.MV_EDGE_SECRET || null })
     .listen(port, host, () => log("http server listening", { url: `http://${host}:${port}/mcp` }));
 }

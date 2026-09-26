@@ -61,6 +61,14 @@ describe("Streamable HTTP transport", () => {
     expect(status).toBe(403);
   });
 
+  it("rejects browser requests from foreign origins (spec: validate Origin), allows clients without Origin", async () => {
+    const res = await fetch(`${base}/mcp`, { method: "POST", headers: { origin: "https://evil.example", authorization: "Bearer mv_test_abc", "content-type": "application/json", accept: "application/json, text/event-stream" }, body: rpc("tools/list") });
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(await res.json())).toContain("Origin not allowed");
+    const ok = await post(rpc("tools/list"), "Bearer mv_test_abc");
+    expect(ok.status).not.toBe(403);
+  });
+
   it("rejects GET and unknown paths", async () => {
     expect((await fetch(`${base}/mcp`)).status).toBe(405);
     expect((await fetch(`${base}/nope`)).status).toBe(404);

@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { McpServer, SUPPORTED_PROTOCOL_VERSIONS, type CallToolResult } from "@modelcontextprotocol/server";
 import { SERVICE_ALIASES, SERVICE_CATALOG, type CheckResult, type Estimate, type Job, type Lookup, type MobileValidate,
   type MobileValidateError, type Money, type ResultItem, type Service } from "mobilevalidate";
 import { z } from "zod";
@@ -8,7 +7,22 @@ import { normalizeNumbers } from "./normalize.ts";
 import { fromMicro, log, toMicro } from "./util.ts";
 
 export const SERVER_NAME = "mobilevalidate";
-export const SERVER_VERSION = "1.0.3";
+export const SERVER_VERSION = "1.1.0";
+
+/**
+ * MCP protocol revisions served, newest first (both transports). `2026-07-28` is the stateless "modern" revision
+ * (per-request `_meta`, `server/discover`); the rest are the "legacy" `initialize`-handshake revisions the SDK still
+ * negotiates. The SDK exports no public constant for modern revisions, so it is named here; test/protocol.test.ts
+ * checks it against what the server actually advertises (`server/discover` and the `initialize` handshake).
+ */
+export const MODERN_PROTOCOL_VERSION = "2026-07-28";
+export const PROTOCOL_VERSIONS: readonly string[] = [MODERN_PROTOCOL_VERSION, ...SUPPORTED_PROTOCOL_VERSIONS];
+
+/**
+ * 2026-07-28 cache hints (SEP-2549). The tool list and discovery result are identical for every key (no prices, no
+ * per-key filtering, no confirmation threshold in them), so shared caches may keep them for an hour.
+ */
+const PUBLIC_1H = { ttlMs: 3_600_000, cacheScope: "public" as const };
 
 /** The subset of the SDK the tools use (lets tests inject a mock). */
 export type Sdk = Pick<MobileValidate, "lookup" | "services" | "jobs" | "account" | "limits">;
@@ -265,16 +279,19 @@ function argsHash(obj: unknown): string {
 export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
   const thresholdUsd = opts.confirmAboveUsd ?? process.env.MCP_CONFIRM_ABOVE_USD ?? "1.00";
   const thresholdMicro = toMicro(thresholdUsd);
-  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { instructions: INSTRUCTIONS });
+  const server = new McpServer(
+    { name: SERVER_NAME, version: SERVER_VERSION, title: "MobileValidate", websiteUrl: "https://mobilevalidate.com/docs/mcp" },
+    { instructions: INSTRUCTIONS, cacheHints: { "tools/list": PUBLIC_1H, "server/discover": PUBLIC_1H } },
+  );
 
   server.registerTool("normalize_numbers", {
     title: "Normalize phone numbers (free)",
     description: "Validate and format phone numbers to E.164 for free, without checking any platform. Use before lookup_numbers when inputs are messy. Format-level only: it flags ambiguous inputs (no country) instead of guessing; the check itself does full validation.",
-    inputSchema: { numbers: numbersShape(1000), default_country: defaultCountry },
-    outputSchema: {
+    inputSchema: z.object({ numbers: numbersShape(1000), default_country: defaultCountry }),
+    outputSchema: z.object({
       results: z.array(z.object({ input: z.string(), e164: z.string().nullable(), country: z.string().nullable(), status: z.string(), note: z.string().nullable() })),
       summary: z.object({ total: z.number(), valid: z.number(), invalid: z.number(), ambiguous: z.number(), duplicate: z.number() }),
-    },
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ numbers, default_country }) => {
     const out = normalizeNumbers(numbers, default_country?.toUpperCase());
@@ -297,8 +314,8 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
   server.registerTool("estimate_cost", {
     title: "Estimate cost (free)",
     description: "Estimate the price of checking numbers and/or e-mail addresses for the given services, for free, without spending credits. Returns counts (valid, invalid, duplicate, cached; cached and billable_max count identifier × service checks) and the maximum possible cost of a bulk job (create_lookup_job) at bulk prices; checks in parts too small for the bulk route (fewer numbers of one country than the bulk minimum) are priced at real-time prices and listed in small_batch. Real-time tools price at real-time rates and quote that amount in their own confirmation.",
-    inputSchema: { numbers: numbersShape(JOB_MAX).optional(), emails: emailsShape(JOB_MAX), checks: checksBulk, default_country: defaultCountry, max_age: maxAge },
-    outputSchema: { ...EstimateOut.shape, requires_confirmation: z.boolean(), confirm_above: MoneyOut },
+    inputSchema: z.object({ numbers: numbersShape(JOB_MAX).optional(), emails: emailsShape(JOB_MAX), checks: checksBulk, default_country: defaultCountry, max_age: maxAge }),
+    outputSchema: z.object({ ...EstimateOut.shape, requires_confirmation: z.boolean(), confirm_above: MoneyOut }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async (a) => {
     const ids = idsOf(a, JOB_MAX);
@@ -315,12 +332,12 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
       (requires ? " Spending this requires explicit user confirmation." : ""));
   });
 
-  const lookupOutput = {
+  const lookupOutput = z.object({
     lookup_id: z.string(), status: z.string(),
     summary: z.object({ total: z.number(), registered: z.number(), not_registered: z.number(), unknown: z.number(), pending: z.number(), invalid: z.number(), suppressed: z.number(),
       by_service: z.record(z.string(), z.object({ completed: z.number(), registered: z.number(), not_registered: z.number(), unknown: z.number(), pending: z.number() }).partial()) }).partial(),
     results: z.array(ItemOut), cost: MoneyOut.nullable(), balance_after: MoneyOut.nullable(), pending_lookup_id: z.string().nullable(),
-  };
+  });
   const waitSeconds = z.number().int().min(0).max(30).optional().describe("Seconds to wait for slow answers (default 20). Pending items return pending_lookup_id.");
 
   type LookupArgs = { numbers?: string[]; emails?: string[]; checks?: string[]; default_country?: string;
@@ -405,10 +422,10 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
   server.registerTool("lookup_numbers", {
     title: "Check phone numbers (and e-mails) in real time (spends credits)",
     description: `Check up to ${LOOKUP_MAX} phone numbers — optionally together with e-mail addresses (emails) — against one or more services (default WhatsApp; e.g. telegram, viber, carrier, spam; for e-mails e.g. email). For spam reputation alone prefer check_spam_reputation. Returns registered true/false/null per service (null = unknown, never billed), confidence and checked_at; data services return attributes. Bulk-only services (${[...BULK_ONLY_CODES, ...EMAIL_BULK_ONLY_CODES].join(", ")}) are refused here — use create_lookup_job. Spends credits; above the confirmation threshold it returns confirmation_required and the USER must approve the amount. ${LIMITS_NOTE} ${EMAIL_NOTE}`,
-    inputSchema: {
+    inputSchema: z.object({
       numbers: numbersShape(LOOKUP_MAX).optional(), emails: emailsShape(LOOKUP_MAX), checks, default_country: defaultCountry, max_age: maxAge,
       wait_seconds: waitSeconds, response_format: responseFormat, confirm_max_cost: confirmMaxCost,
-    },
+    }),
     outputSchema: lookupOutput,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   }, (a) => runLookupTool("lookup_numbers", a));
@@ -416,12 +433,12 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
   server.registerTool("lookup_emails", {
     title: "Check e-mail addresses in real time (spends credits)",
     description: `Check up to ${LOOKUP_MAX} e-mail addresses: does the mailbox exist (check "email"), or does the address have an account on a platform (e.g. ${EMAIL_REALTIME_CODES.filter((c) => c !== "email.valid").slice(0, 4).join(", ")}). Default check ["email"]. Returns registered true/false/null per service (null = unknown, e.g. unsupported mail provider — never billed). Bulk-only e-mail services (${EMAIL_BULK_ONLY_CODES.join(", ")}) are refused here — use create_lookup_job with emails. Spends credits; above the confirmation threshold the USER must approve the amount. ${EMAIL_NOTE}`,
-    inputSchema: {
+    inputSchema: z.object({
       emails: z.array(z.string().min(1).max(254)).min(1).max(LOOKUP_MAX).describe(`E-mail addresses to check (at most ${LOOKUP_MAX}). Test keys: use @test.mobilevalidate.com (registered@, not-registered@, unknown@ …).`),
       checks: z.array(z.string().min(1).max(64)).min(1).max(20).optional()
         .describe(`E-mail services (codes or aliases). Default ["email"]. Real time: ${EMAIL_REALTIME_CODES.join(", ")}. Bulk only (use create_lookup_job): ${EMAIL_BULK_ONLY_CODES.join(", ")}. Aliases: ${emailAliasList}.`),
       max_age: maxAge, wait_seconds: waitSeconds, response_format: responseFormat, confirm_max_cost: confirmMaxCost,
-    },
+    }),
     outputSchema: lookupOutput,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   }, (a) => runLookupTool("lookup_emails", { ...a, checks: a.checks ?? ["email"] }));
@@ -440,15 +457,15 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
   server.registerTool("check_spam_reputation", {
     title: "Spam reputation of phone numbers (spends credits)",
     description: `Risk summary for up to ${LOOKUP_MAX} phone numbers from spam and nuisance-call reports (runs the number.spam check only). Per number: risk_level (high | medium | low | no_reports), risk_score 0–100, the reasons behind it, top report category, first/last seen month and the number of independent signal classes. ${SPAM_NOTE} Spends credits; above the confirmation threshold it returns confirmation_required and the USER must approve the amount. Use it to screen callers, leads or sign-ups the user legitimately holds — not to build lists. ${LIMITS_NOTE}`,
-    inputSchema: {
+    inputSchema: z.object({
       numbers: numbersShape(LOOKUP_MAX).describe(`Phone numbers (US, CA or DE; ideally E.164 like "+12025550143"). At most ${LOOKUP_MAX}. Test keys: +447700900001 high, …002 no_reports, …003 unknown, …004 pending then medium, …005 unsupported_country.`),
       default_country: defaultCountry, max_age: maxAge, wait_seconds: waitSeconds, confirm_max_cost: confirmMaxCost,
-    },
-    outputSchema: {
+    }),
+    outputSchema: z.object({
       lookup_id: z.string(), status: z.string(), results: z.array(SpamOut),
       levels: z.object({ high: z.number(), medium: z.number(), low: z.number(), no_reports: z.number(), not_conclusive: z.number(), invalid: z.number() }),
       cost: MoneyOut.nullable(), balance_after: MoneyOut.nullable(), pending_lookup_id: z.string().nullable(),
-    },
+    }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   }, async (a) => {
     const r = await gatedLookup("check_spam_reputation", { ...a, checks: ["number.spam"] });
@@ -487,8 +504,8 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
   server.registerTool("create_lookup_job", {
     title: "Start a bulk check (spends credits)",
     description: `Start a bulk check for more than ${LOOKUP_MAX} numbers and/or e-mail addresses (up to ${JOB_MAX} together), when results aren't needed right now, or for bulk-only services (${[...BULK_ONLY_CODES, ...EMAIL_BULK_ONLY_CODES].join(", ")}). Any active service works; each number / e-mail is checked for every service of its kind in checks. Returns a job_id for get_lookup_job. Always requires the USER to approve the cost when above the threshold or above ${LOOKUP_MAX} identifiers. ${LIMITS_NOTE} ${EMAIL_NOTE}`,
-    inputSchema: { numbers: numbersShape(JOB_MAX).optional(), emails: emailsShape(JOB_MAX), checks: checksBulk, default_country: defaultCountry, max_age: maxAge, confirm_max_cost: confirmMaxCost },
-    outputSchema: { job_id: z.string(), status: z.string(), estimate: EstimateOut, max_cost: MoneyOut, next_step: z.string() },
+    inputSchema: z.object({ numbers: numbersShape(JOB_MAX).optional(), emails: emailsShape(JOB_MAX), checks: checksBulk, default_country: defaultCountry, max_age: maxAge, confirm_max_cost: confirmMaxCost }),
+    outputSchema: z.object({ job_id: z.string(), status: z.string(), estimate: EstimateOut, max_cost: MoneyOut, next_step: z.string() }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   }, async (a) => {
     const ids = idsOf(a, JOB_MAX);
@@ -516,21 +533,21 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
   server.registerTool("get_lookup_job", {
     title: "Get bulk job status and results",
     description: "Get a bulk job's status and a page of results (one item per number or e-mail — kind phone/email — with every requested service of its kind in checks). Filter to registered/unregistered/unknown (on the first service, or the one named in service) to save tokens; follow next_cursor for more.",
-    inputSchema: {
+    inputSchema: z.object({
       job_id: z.string().regex(/^job_[0-9A-Za-z]+$/).describe("The job_id returned by create_lookup_job."),
       registered: z.enum(["true", "false", "null"]).optional().describe('Filter: "true" registered, "false" not registered, "null" unknown.'),
       service: z.string().max(64).optional().describe("Service (code or alias) the registered filter applies to; default: the job's first service."),
       cursor: z.string().optional().describe("next_cursor from a previous call."),
       limit: z.number().int().min(1).max(200).optional().describe("Results per page (default 50, max 200)."),
       response_format: responseFormat,
-    },
-    outputSchema: {
+    }),
+    outputSchema: z.object({
       job_id: z.string(), status: z.string(),
       progress: z.object({ total: z.number(), checks_total: z.number(), done: z.number(), conclusive: z.number(), non_billable: z.number() }).partial().nullable(),
       eta_seconds: z.number().nullable(),
       cost: z.object({ estimated_max: MoneyOut, reserved: MoneyOut, charged: MoneyOut, released: MoneyOut }).partial().nullable(),
       results: z.array(ItemOut), has_more: z.boolean(), next_cursor: z.string().nullable(),
-    },
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async (a) => {
     const job = await sdk.jobs.get(a.job_id);
@@ -550,8 +567,8 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
   server.registerTool("list_services", {
     title: "List available services (free)",
     description: "List the services this key can use: code, platform, input type (phone → numbers, email → emails), real time or bulk only, attributes, countries and prices (per number/e-mail and service; non-conclusive results are free). Platform names are descriptive only; no affiliation.",
-    inputSchema: {},
-    outputSchema: { services: z.array(ServiceOut), realtime: z.array(z.string()), bulk_only: z.array(z.string()) },
+    inputSchema: z.object({}),
+    outputSchema: z.object({ services: z.array(ServiceOut), realtime: z.array(z.string()), bulk_only: z.array(z.string()) }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async () => {
     const { data, error } = await sdk.services();
@@ -566,12 +583,12 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
   server.registerTool("get_account", {
     title: "Account balance and limits",
     description: "Show balance, reserved credit, today's usage, remaining daily caps and rate limits.",
-    inputSchema: {},
-    outputSchema: {
+    inputSchema: z.object({}),
+    outputSchema: z.object({
       org_id: z.string(), balance: MoneyOut, reserved: MoneyOut,
       today: z.record(z.string(), z.unknown()).nullable(), limits: z.record(z.string(), z.unknown()).nullable(),
       confirm_above: MoneyOut,
-    },
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async () => {
     const [acct, limits] = await Promise.all([sdk.account.get(), sdk.limits.get()]);
