@@ -1,5 +1,6 @@
 // Streamable HTTP transport, stateless: a fresh server per request; the caller's Bearer key is forwarded to the API.
 import { pathToFileURL } from "node:url";
+import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { forwardFor, sdkFor } from "./client.ts";
@@ -20,14 +21,34 @@ export interface HttpOptions {
   forwardSecret?: string | null;
   /** Header with the end client's IP when the peer is loopback (a tunnel/proxy). Default cf-connecting-ip. */
   clientIpHeader?: string;
+  /**
+   * Edge secret (env MV_EDGE_SECRET, same value as the API's): the Cloudflare edge adds `x-mv-edge: <secret>` to every
+   * request. The client-IP header is trusted only from loopback AND with a matching edge secret; unset → never trusted
+   * (fail closed: every tunnelled caller then shares the loopback address, i.e. the strictest sandbox bucket).
+   */
+  edgeSecret?: string | null;
 }
+
+export const EDGE_HEADER = "x-mv-edge";
 
 const isLoopback = (ip: string) => ip === "::1" || /^(::ffff:)?127\./.test(ip);
 
-/** The end client's IP: the proxy's header when the connection comes from loopback (tunnel), else the socket peer. */
-function endClientIp(req: IncomingMessage, header: string): string | null {
+/** Constant-time check of the edge secret header; false when no secret is configured (fail closed). */
+function edgeVerified(req: IncomingMessage, secret: string | null | undefined): boolean {
+  if (!secret) return false;
+  const raw = req.headers[EDGE_HEADER];
+  const got = Buffer.from((Array.isArray(raw) ? raw[0] : raw) ?? ""), want = Buffer.from(secret);
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+
+/**
+ * The end client's IP: the proxy's header only when the connection comes from loopback (tunnel) AND carries the edge
+ * secret (other local users of this shared host can also reach loopback — security review L2), else the socket peer.
+ */
+function endClientIp(req: IncomingMessage, header: string, edgeSecret: string | null | undefined): string | null {
   const remote = req.socket.remoteAddress ?? null;
   if (remote && !isLoopback(remote)) return remote;
+  if (!edgeVerified(req, edgeSecret)) return remote;
   const raw = req.headers[header];
   const fwd = (Array.isArray(raw) ? raw[0] : raw)?.split(",")[0]?.trim();
   return fwd || remote;
@@ -100,7 +121,7 @@ export function createHttpServer(opts: HttpOptions = {}): Server {
       return;
     }
 
-    const server = buildServer(makeSdk(key.key, { clientIp: endClientIp(req, header) }));
+    const server = buildServer(makeSdk(key.key, { clientIp: endClientIp(req, header, opts.edgeSecret) }));
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on("close", () => { void transport.close(); void server.close(); });
     try {
@@ -116,13 +137,15 @@ export function createHttpServer(opts: HttpOptions = {}): Server {
 
 /**
  * Start the HTTP server from env: MCP_HOST (default 127.0.0.1), MCP_PORT (3300), MCP_ALLOWED_HOSTS (comma-separated),
- * MV_MCP_FORWARD_SECRET (hosted deployment only; same value as the API's), MCP_CLIENT_IP_HEADER (cf-connecting-ip).
+ * MV_MCP_FORWARD_SECRET (hosted deployment only; same value as the API's), MCP_CLIENT_IP_HEADER (cf-connecting-ip),
+ * MV_EDGE_SECRET (hosted deployment only; same value as the API's — without it the client-IP header is never trusted).
  */
 export function startHttpServerFromEnv(env: Record<string, string | undefined> = process.env): Server {
   const host = env.MCP_HOST ?? "127.0.0.1";
   const port = Number(env.MCP_PORT ?? 3300);
   const extra = (env.MCP_ALLOWED_HOSTS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  return createHttpServer({ allowedHosts: extra, forwardSecret: env.MV_MCP_FORWARD_SECRET || null, clientIpHeader: env.MCP_CLIENT_IP_HEADER })
+  return createHttpServer({ allowedHosts: extra, forwardSecret: env.MV_MCP_FORWARD_SECRET || null, clientIpHeader: env.MCP_CLIENT_IP_HEADER,
+    edgeSecret: env.MV_EDGE_SECRET || null })
     .listen(port, host, () => log("http server listening", { url: `http://${host}:${port}/mcp` }));
 }
 

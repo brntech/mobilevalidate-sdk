@@ -88,14 +88,16 @@ describe("hosted server: end-client IP forwarding for the public sandbox key", (
     await new Promise<void>((r) => api.close(() => r()));
   });
 
-  async function call(forwardSecret: string | null, key: string, clientIp?: string) {
-    const mcp = createHttpServer({ forwardSecret });
+  const EDGE = "e".repeat(40);
+  async function call(forwardSecret: string | null, key: string, clientIp?: string,
+    edge: { secret?: string | null; header?: string } = { secret: EDGE, header: EDGE }) {
+    const mcp = createHttpServer({ forwardSecret, edgeSecret: edge.secret ?? null });
     await new Promise<void>((r) => mcp.listen(0, "127.0.0.1", r));
     try {
       const res = await fetch(`http://127.0.0.1:${(mcp.address() as AddressInfo).port}/mcp`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${key}`,
-          ...(clientIp ? { "cf-connecting-ip": clientIp } : {}) },
+          ...(clientIp ? { "cf-connecting-ip": clientIp } : {}), ...(edge.header !== undefined ? { "x-mv-edge": edge.header } : {}) },
         body: rpc("tools/call", { name: "get_account", arguments: {} }),
       });
       expect(res.status).toBe(200);
@@ -114,6 +116,17 @@ describe("hosted server: end-client IP forwarding for the public sandbox key", (
   });
   it("falls back to the socket address when no client-IP header is present", async () => {
     expect(await call(SECRET, SANDBOX_PUBLIC_KEY)).toEqual({ ip: "127.0.0.1", secret: SECRET });
+  });
+  // security review L2: any local user can reach loopback on this shared host — cf-connecting-ip counts only with the
+  // edge secret the Cloudflare edge adds, and never when no edge secret is configured (fail closed).
+  it("ignores cf-connecting-ip without the matching edge secret header", async () => {
+    expect(await call(SECRET, SANDBOX_PUBLIC_KEY, "2001:db8::7", { secret: EDGE })).toEqual({ ip: "127.0.0.1", secret: SECRET });
+    expect(await call(SECRET, SANDBOX_PUBLIC_KEY, "2001:db8::7", { secret: EDGE, header: "wrong" })).toEqual({ ip: "127.0.0.1", secret: SECRET });
+    expect(await call(SECRET, SANDBOX_PUBLIC_KEY, "2001:db8::7", { secret: EDGE, header: EDGE.slice(1) })).toEqual({ ip: "127.0.0.1", secret: SECRET });
+  });
+  it("fails closed when MV_EDGE_SECRET is not configured, even if the caller sends some x-mv-edge", async () => {
+    expect(await call(SECRET, SANDBOX_PUBLIC_KEY, "2001:db8::7", { secret: null, header: EDGE })).toEqual({ ip: "127.0.0.1", secret: SECRET });
+    expect(await call(SECRET, SANDBOX_PUBLIC_KEY, "2001:db8::7", { secret: null, header: "" })).toEqual({ ip: "127.0.0.1", secret: SECRET });
   });
 });
 

@@ -206,7 +206,7 @@ class IdempotencyRequestInProgressError(APIError):
 
 
 class TestKeyExistsError(APIError):
-    """409 test_key_exists: this e-mail address already has an active test key."""
+    """409 test_key_exists: no more test keys can be issued for this e-mail address right now (max 3 in 30 days)."""
 
     __test__ = False
     default_code = "test_key_exists"

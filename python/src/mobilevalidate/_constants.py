@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 DEFAULT_BASE_URL = "https://api.mobilevalidate.com"
 
