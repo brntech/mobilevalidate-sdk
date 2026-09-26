@@ -513,6 +513,11 @@ function printJob(io: CliIO, job: Job, o: Out) {
   const unit = p && p.checks_total && p.checks_total !== p.total ? ` checks (${p.total} rows)` : "";
   io.stdout(`${job.id}  ${job.status}${p ? `  ${p.done}/${p.checks_total ?? p.total} done${unit}` : ""}${job.eta_seconds ? `  eta ${job.eta_seconds}s` : ""}\n`);
   if (job.cost) io.stdout(`cost: charged $${job.cost.charged.amount}, reserved $${job.cost.reserved.amount}, max $${job.cost.estimated_max.amount}\n`);
+  for (const l of job.cost?.breakdown ?? []) {
+    if (l.reason === "small_batch") {
+      io.stdout(`note: ${l.checks} ${l.check} checks at the real-time price $${l.unit_price.amount} (fewer than ${l.batch_minimum ?? "the minimum"} numbers per country: ${(l.countries ?? []).join(", ")})\n`);
+    }
+  }
 }
 
 async function jobCommand(

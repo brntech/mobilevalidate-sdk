@@ -16,7 +16,7 @@ else:  # pragma: no cover
     from typing_extensions import NotRequired, TypedDict
 
 __all__ = [
-    "APIObject", "Money", "CheckResult", "ResultItem", "Summary", "Lookup", "Job", "Estimate", "Page", "Service",
+    "APIObject", "Money", "CheckResult", "ResultItem", "Summary", "Lookup", "Job", "Estimate", "PriceLine", "Page", "Service",
     "WebhookEndpoint", "WebhookEvent", "MoneyInput", "DurationInput", "DownloadFormat",
 ]
 
@@ -101,8 +101,22 @@ class Job(TypedDict, total=False):
     checks: List[str]
     progress: Dict[str, int]
     eta_seconds: Optional[int]
-    cost: Dict[str, Money]
+    cost: Dict[str, Any]  # estimated_max / reserved / charged / released: Money; breakdown: List[PriceLine]
     metadata: Dict[str, str]
+
+
+class PriceLine(TypedDict, total=False):
+    """One price line of a bulk job. ``reason == "small_batch"``: a part too small for the batch route (fewer numbers
+    per country than ``batch_minimum``), priced at the real-time price."""
+
+    check: str
+    price_mode: str
+    reason: Optional[str]
+    checks: int
+    unit_price: Money
+    max_cost: Money
+    countries: List[str]
+    batch_minimum: int
 
 
 class Estimate(TypedDict, total=False):
@@ -117,6 +131,7 @@ class Estimate(TypedDict, total=False):
     max_cost: Money
     checks: List[str]
     checks_total: int
+    breakdown: List[PriceLine]
 
 
 class Page(TypedDict, total=False):

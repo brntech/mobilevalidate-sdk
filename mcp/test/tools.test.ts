@@ -344,6 +344,20 @@ describe("e-mail checks", () => {
     const e = await client.callTool({ name: "estimate_cost", arguments: { emails: [T("a"), T("b")], checks: ["gmail"] } });
     expect(e.isError).toBeFalsy();
   });
+  it("estimate_cost lists checks priced at the real-time price because their part is too small", async () => {
+    const sdk = mockSdk("0.0006", 2);
+    sdk.jobs.estimate.mockResolvedValueOnce({ data: { total: 2, valid: 2, invalid: 0, duplicate: 0, cached: 0, unsupported: 0, suppressed: 0,
+      billable_max: 2, max_cost: money("0.006"), checks: ["whatsapp.registered"], breakdown: [
+        { check: "whatsapp.registered", price_mode: "batch", reason: null, checks: 0, unit_price: money("0.00015"), max_cost: money("0") },
+        { check: "whatsapp.registered", price_mode: "realtime", reason: "small_batch", checks: 2, unit_price: money("0.003"),
+          max_cost: money("0.006"), countries: ["DE"], batch_minimum: 132 }] }, error: null });
+    const client = await connect(sdk);
+    const e = await client.callTool({ name: "estimate_cost", arguments: { numbers: nums(2), checks: ["whatsapp"] } });
+    expect(e.isError).toBeFalsy();
+    expect((e.structuredContent as { small_batch: unknown[] }).small_batch).toEqual([
+      { check: "whatsapp.registered", checks: 2, unit_price: money("0.003"), countries: ["DE"], batch_minimum: 132 }]);
+    expect(JSON.stringify(e.content)).toContain("fewer than 132 numbers per country");
+  });
   it("no identifiers → invalid_request without calling the API; > 100 together → too_many_numbers", async () => {
     const sdk = mockSdk();
     const client = await connect(sdk);

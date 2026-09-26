@@ -134,6 +134,9 @@ const EstimateOut = z.object({
   total: z.number(), valid: z.number(), invalid: z.number(), duplicate: z.number(), cached: z.number(),
   unsupported: z.number(), suppressed: z.number(), billable_max: z.number(), max_cost: MoneyOut,
   checks_total: z.number().optional(),
+  /** Checks priced at the real-time price because their part is too small for the batch route. */
+  small_batch: z.array(z.object({ check: z.string(), checks: z.number(), unit_price: MoneyOut, countries: z.array(z.string()),
+    batch_minimum: z.number().optional() })).optional(),
 });
 const ServiceOut = z.object({
   code: z.string(), name: z.string(), platform: z.string(), input_type: z.string(), result_kind: z.string(), realtime: z.boolean(),
@@ -222,7 +225,17 @@ function shapeEstimate(e: Estimate) {
     unsupported: e.unsupported ?? 0, suppressed: e.suppressed ?? 0, billable_max: e.billable_max ?? 0,
     max_cost: { amount: e.max_cost?.amount ?? "0", currency: e.max_cost?.currency ?? "USD" },
     ...(e.checks_total !== undefined ? { checks_total: e.checks_total } : {}),
+    ...smallBatchOf(e),
   };
+}
+
+/** Price lines billed at the real-time price because the part is too small for the batch route. */
+function smallBatchOf(e: Estimate) {
+  const lines = (e.breakdown ?? []).filter((l) => l.reason === "small_batch");
+  if (!lines.length) return {};
+  return { small_batch: lines.map((l) => ({ check: String(l.check), checks: l.checks,
+    unit_price: { amount: l.unit_price.amount, currency: l.unit_price.currency }, countries: l.countries ?? [],
+    ...(l.batch_minimum !== undefined ? { batch_minimum: l.batch_minimum } : {}) })) };
 }
 
 /** Decide whether spending needs explicit user confirmation, and which cap to send to the API. */
@@ -283,7 +296,7 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
 
   server.registerTool("estimate_cost", {
     title: "Estimate cost (free)",
-    description: "Estimate the price of checking numbers and/or e-mail addresses for the given services, for free, without spending credits. Returns counts (valid, invalid, duplicate, cached; cached and billable_max count identifier × service checks) and the maximum possible cost of a bulk job (create_lookup_job) at bulk prices. Real-time tools price at real-time rates and quote that amount in their own confirmation.",
+    description: "Estimate the price of checking numbers and/or e-mail addresses for the given services, for free, without spending credits. Returns counts (valid, invalid, duplicate, cached; cached and billable_max count identifier × service checks) and the maximum possible cost of a bulk job (create_lookup_job) at bulk prices; checks in parts too small for the bulk route (fewer numbers of one country than the bulk minimum) are priced at real-time prices and listed in small_batch. Real-time tools price at real-time rates and quote that amount in their own confirmation.",
     inputSchema: { numbers: numbersShape(JOB_MAX).optional(), emails: emailsShape(JOB_MAX), checks: checksBulk, default_country: defaultCountry, max_age: maxAge },
     outputSchema: { ...EstimateOut.shape, requires_confirmation: z.boolean(), confirm_above: MoneyOut },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -298,6 +311,7 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
     log("estimate_cost", { n: ids.count, max_cost: e.max_cost.amount });
     return ok({ ...e, requires_confirmation: requires, confirm_above: { amount: thresholdUsd, currency: "USD" } },
       `${e.valid} valid of ${e.total} (${e.cached} cached, ${e.invalid} invalid, ${e.duplicate} duplicate). Maximum cost ${usd(e.max_cost)}.` +
+      (e.small_batch ? ` ${e.small_batch.map((l) => `${l.checks} ${l.check} checks (${l.countries.join(", ")}) are priced at the real-time price because fewer than ${l.batch_minimum ?? "the minimum"} numbers per country were sent`).join("; ")}.` : "") +
       (requires ? " Spending this requires explicit user confirmation." : ""));
   });
 

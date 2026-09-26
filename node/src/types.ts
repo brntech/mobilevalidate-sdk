@@ -137,6 +137,24 @@ export interface Lookup {
   [extra: string]: unknown;
 }
 
+/**
+ * One price line of a bulk job: the checks of one service at one unit price. Parts too small for the cheap batch route
+ * (fewer numbers per country than `batch_minimum`) are priced at the service's real-time price, `reason: "small_batch"`.
+ */
+export interface PriceLine {
+  check: ServiceCode;
+  price_mode: Open<"batch" | "realtime">;
+  reason: Open<"small_batch"> | null;
+  checks: number;
+  unit_price: Money;
+  max_cost: Money;
+  /** small_batch lines: the countries (ISO 3166-1 alpha-2) whose numbers are in small parts. */
+  countries?: string[];
+  /** small_batch lines: numbers per country (for this check, in one job) that qualify for the batch price. */
+  batch_minimum?: number;
+  [extra: string]: unknown;
+}
+
 export interface Estimate {
   total?: number;
   valid?: number;
@@ -150,6 +168,8 @@ export interface Estimate {
   checks?: ServiceCode[];
   /** Σ rows × services of the row's kind */
   checks_total?: number;
+  /** Per-check price lines; Σ max_cost = max_cost. */
+  breakdown?: PriceLine[];
   [extra: string]: unknown;
 }
 
@@ -164,7 +184,7 @@ export interface Job {
   /** total = rows (numbers + e-mails); checks_total = Σ rows × services of their kind; done / conclusive / non_billable count checks. */
   progress?: { total: number; checks_total?: number; done: number; conclusive: number; non_billable: number };
   eta_seconds?: number | null;
-  cost?: { estimated_max: Money; reserved: Money; charged: Money; released: Money };
+  cost?: { estimated_max: Money; reserved: Money; charged: Money; released: Money; breakdown?: PriceLine[] };
   estimate?: Estimate;
   retention_days?: number;
   metadata?: Record<string, string>;
