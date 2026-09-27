@@ -152,7 +152,7 @@ Local stdio:
 - **Streamable HTTP:** URL `https://mcp.mobilevalidate.com/mcp`, header `Authorization: Bearer mv_agent_…`. The
   server is stateless: `POST` only, JSON responses, no session id.
 - **stdio:** command `npx`, args `["-y", "@mobilevalidate/mcp"]`, env `MOBILEVALIDATE_API_KEY=mv_agent_…`.
-  To pin a version use `@mobilevalidate/mcp@1.1.0`. After `npm install -g @mobilevalidate/mcp` the command is
+  To pin a version use `@mobilevalidate/mcp@1.2.0`. After `npm install -g @mobilevalidate/mcp` the command is
   `mobilevalidate-mcp`.
 
 ### Protocol versions
@@ -204,11 +204,15 @@ yes/no/unknown only — no names, photos or profiles. Test keys use `registered@
 
 **Spam reputation.** `check_spam_reputation` (or `checks: ["spam"]` on the other tools) answers from spam and
 nuisance-call reports: regulator actions, government complaint data, community reports and recently-unassigned numbers.
-Countries US, CA, DE (others → `unsupported_country`, free). `no_reports` means no reports are known — **not** that the
+All countries except sanctioned ones (Cuba, Iran, North Korea, Syria, Russia, Belarus, Venezuela and sanctioned regions →
+`unsupported_country`, free). `no_reports` means no reports are known — **not** that the
 number is safe; it is still a conclusive, billed answer. Limits: ≤ 100 numbers per call, the same spend confirmation and
 anti-enumeration rules as `lookup_numbers`. Test keys: `+447700900001` high, `…002` no_reports, `…003` unknown, `…004`
-pending then medium, `…005` unsupported_country. Attribute values may be integers (`risk_score`, `sources`). Live
-network status (HLR, `hlr`) is coming soon and not offered by the tools yet.
+pending then medium, `…005` unsupported_country. Attribute values may be integers (`risk_score`, `sources`).
+
+**Network checks.** `checks: ["hlr"]` returns live network status (`status` reachable / unreachable / invalid, `ported`,
+`roaming`, `mcc_mnc`, `country`); `checks: ["mnp"]` returns number portability (`porting` ported / not_ported,
+`mcc_mnc`, `country`). Unknown answers are free.
 
 ### Spend safety
 

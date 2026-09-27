@@ -1,6 +1,6 @@
 {
   "name": "@mobilevalidate/mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "mcpName": "com.mobilevalidate/mcp",
   "description": "MobileValidate MCP server (stdio + Streamable HTTP): let AI agents check phone numbers on WhatsApp, Telegram and more, carrier, spam reputation and e-mails.",
   "keywords": [

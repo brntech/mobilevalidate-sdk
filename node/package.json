@@ -1,6 +1,6 @@
 {
   "name": "mobilevalidate",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "MobileValidate API client and CLI: check phone numbers on WhatsApp, Telegram, Viber and more, carrier lookup, spam reputation and e-mail verification. Typed errors, retries, zero dependencies. ESM + CommonJS.",
   "keywords": [
     "phone validation",

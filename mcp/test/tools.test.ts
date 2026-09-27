@@ -412,11 +412,12 @@ describe("spam reputation", () => {
     const out = r.structuredContent as { results: { checks?: Record<string, { attributes: Record<string, unknown> | null }> }[] };
     expect(out.results[0]!.checks!["number.spam"]!.attributes!.risk_score).toBe(95);
   });
-  it("descriptions: spam alias listed, limits and meaning stated, hlr not offered", async () => {
+  it("descriptions: spam alias listed, limits and meaning stated, sanctioned countries excluded, hlr/mnp offered", async () => {
     const client = await connect(mockSdk());
     const { tools } = await client.listTools();
     const t = tools.find((x) => x.name === "check_spam_reputation")!;
-    expect(t.description).toMatch(/US, CA, DE/);
+    expect(t.description).toMatch(/All countries except sanctioned ones/);
+    expect(t.description).not.toMatch(/US, CA, DE/);
     expect(t.description).toMatch(/NOT that the number is safe/);
     expect(t.description).toMatch(/Up to 100|up to 100/i);
     expect(t.description).toMatch(/consecutive numbers/);
@@ -425,6 +426,7 @@ describe("spam reputation", () => {
     const checksDesc = (tools.find((x) => x.name === "lookup_numbers")!.inputSchema.properties as Record<string, { description?: string }>).checks!.description!;
     expect(checksDesc).toMatch(/Aliases: [^;]*\bspam\b/);
     expect(checksDesc).toContain("number.spam");
-    expect(checksDesc).not.toMatch(/\bhlr\b|number\.hlr/);
+    expect(checksDesc).toMatch(/number\.hlr/);
+    expect(checksDesc).toMatch(/number\.mnp/);
   });
 });

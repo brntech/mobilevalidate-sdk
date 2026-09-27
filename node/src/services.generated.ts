@@ -256,20 +256,6 @@ export const SERVICE_CATALOG = [
     ]
   },
   {
-    "code": "vk.registered",
-    "name": "VK registration",
-    "platform": "VK",
-    "family": "social",
-    "inputType": "phone",
-    "resultKind": "boolean",
-    "realtime": true,
-    "beta": false,
-    "attributes": [],
-    "countries": [
-      "RU"
-    ]
-  },
-  {
     "code": "apple.registered",
     "name": "Apple ID registration",
     "platform": "Apple",
@@ -372,13 +358,46 @@ export const SERVICE_CATALOG = [
       "top_category",
       "first_seen",
       "last_seen",
-      "sources"
+      "sources",
+      "premium_rate",
+      "personal_number"
     ],
-    "countries": [
-      "US",
-      "CA",
-      "DE"
-    ]
+    "countries": []
+  },
+  {
+    "code": "number.hlr",
+    "name": "Live network status (HLR)",
+    "platform": "Mobile network",
+    "family": "network",
+    "inputType": "phone",
+    "resultKind": "attributes",
+    "realtime": true,
+    "beta": false,
+    "attributes": [
+      "status",
+      "ported",
+      "roaming",
+      "network",
+      "mcc_mnc",
+      "country"
+    ],
+    "countries": []
+  },
+  {
+    "code": "number.mnp",
+    "name": "Number portability (MNP)",
+    "platform": "Mobile network",
+    "family": "network",
+    "inputType": "phone",
+    "resultKind": "attributes",
+    "realtime": true,
+    "beta": false,
+    "attributes": [
+      "porting",
+      "mcc_mnc",
+      "country"
+    ],
+    "countries": []
   },
   {
     "code": "email.valid",
@@ -571,13 +590,15 @@ export const SERVICE_ALIASES = {
   "tiktok": "tiktok.registered",
   "snapchat": "snapchat.registered",
   "linkedin": "linkedin.registered",
-  "vk": "vk.registered",
   "apple": "apple.registered",
   "amazon": "amazon.registered",
   "microsoft": "microsoft.registered",
   "netflix": "netflix.registered",
   "carrier": "network.carrier",
   "spam": "number.spam",
+  "hlr": "number.hlr",
+  "mnp": "number.mnp",
+  "porting": "number.mnp",
   "email": "email.valid",
   "gmail": "gmail.email",
   "outlook": "outlook.email",

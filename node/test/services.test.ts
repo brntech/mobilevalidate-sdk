@@ -23,13 +23,14 @@ describe("generated service catalog", () => {
     expect(SERVICE_CATALOG.find((s) => s.code === "gmail.email")).toMatchObject({ inputType: "email", realtime: false });
     expect(SERVICE_CATALOG.find((s) => s.code === "telegram.registered")).toMatchObject({ inputType: "phone" });
   });
-  it("advertises number.spam (alias spam, US/CA/DE) but not number.hlr (coming soon)", () => {
+  it("advertises number.spam (alias spam, all countries), number.hlr and number.mnp", () => {
     const codes = SERVICE_CATALOG.map((s) => s.code as string);
     expect(SERVICE_CATALOG.find((s) => s.code === "number.spam")).toMatchObject({ resultKind: "attributes", realtime: true,
-      countries: ["US", "CA", "DE"], attributes: expect.arrayContaining(["risk_level", "risk_score", "sources"]) });
+      countries: [], attributes: expect.arrayContaining(["risk_level", "risk_score", "sources"]) });
     expect(SERVICE_ALIASES.spam).toBe("number.spam");
-    expect(codes).not.toContain("number.hlr");
-    expect(Object.keys(SERVICE_ALIASES)).not.toContain("hlr");
+    expect(codes).toEqual(expect.arrayContaining(["number.hlr", "number.mnp"]));
+    expect(SERVICE_ALIASES.hlr).toBe("number.hlr");
+    expect(SERVICE_ALIASES.mnp).toBe("number.mnp");
     const spam: CheckInput = "spam"; // typed alias
     expect(spam).toBe("spam");
   });

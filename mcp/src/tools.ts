@@ -7,7 +7,7 @@ import { normalizeNumbers } from "./normalize.ts";
 import { fromMicro, log, toMicro } from "./util.ts";
 
 export const SERVER_NAME = "mobilevalidate";
-export const SERVER_VERSION = "1.1.0";
+export const SERVER_VERSION = "1.2.0";
 
 /**
  * MCP protocol revisions served, newest first (both transports). `2026-07-28` is the stateless "modern" revision
@@ -60,7 +60,7 @@ const EMAIL_NOTE = "E-mail checks answer only whether a mailbox/account exists (
 /** Spam reputation: what the answer means and what it does not. */
 const SPAM_NOTE = "Spam reputation (number.spam, alias spam) is report-based: risk_level high/medium/low/no_reports, " +
   "risk_score 0–100, reasons (regulator action, government complaint data, community reports, recently offered as an " +
-  "unassigned number). Countries US, CA, DE only (others: unsupported_country, free). no_reports means no reports are " +
+  "unassigned number). All countries except sanctioned ones (Cuba, Iran, North Korea, Syria, Russia, Belarus, Venezuela: unsupported_country, free). no_reports means no reports are " +
   "known — NOT that the number is safe. Every risk_level including no_reports is billed; unknown/unsupported are free. " +
   "No report texts or names are returned.";
 
@@ -450,6 +450,8 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
     risk_level: z.string().nullable(), risk_score: z.number().nullable(),
     /** Reasons that apply: regulator, government, community, unassigned. */
     reasons: z.array(z.string()), voip_range: z.boolean().nullable(), top_category: z.string().nullable(),
+    /** Premium-rate / international shared-cost number (toll-fraud risk); null when not reported. */
+    premium_rate: z.boolean().nullable().optional(),
     first_seen: z.string().nullable(), last_seen: z.string().nullable(), sources: z.number().nullable(),
     checked_at: z.string().nullable(), cached: z.boolean().nullable(), billed: z.boolean().nullable(), reason: z.string().nullable(),
     test: z.boolean().optional(),
@@ -458,7 +460,7 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
     title: "Spam reputation of phone numbers (spends credits)",
     description: `Risk summary for up to ${LOOKUP_MAX} phone numbers from spam and nuisance-call reports (runs the number.spam check only). Per number: risk_level (high | medium | low | no_reports), risk_score 0–100, the reasons behind it, top report category, first/last seen month and the number of independent signal classes. ${SPAM_NOTE} Spends credits; above the confirmation threshold it returns confirmation_required and the USER must approve the amount. Use it to screen callers, leads or sign-ups the user legitimately holds — not to build lists. ${LIMITS_NOTE}`,
     inputSchema: z.object({
-      numbers: numbersShape(LOOKUP_MAX).describe(`Phone numbers (US, CA or DE; ideally E.164 like "+12025550143"). At most ${LOOKUP_MAX}. Test keys: +447700900001 high, …002 no_reports, …003 unknown, …004 pending then medium, …005 unsupported_country.`),
+      numbers: numbersShape(LOOKUP_MAX).describe(`Phone numbers (ideally E.164 like "+12025550143"). At most ${LOOKUP_MAX}. Test keys: +447700900001 high, …002 no_reports, …003 unknown, …004 pending then medium, …005 unsupported_country.`),
       default_country: defaultCountry, max_age: maxAge, wait_seconds: waitSeconds, confirm_max_cost: confirmMaxCost,
     }),
     outputSchema: z.object({
@@ -486,6 +488,7 @@ export function buildServer(sdk: Sdk, opts: ToolOptions = {}): McpServer {
         status: c ? String(c.status) : null, risk_level: level, risk_score: num("risk_score"),
         reasons: ["regulator", "government", "community", "unassigned"].filter((k) => at[`reason_${k}`] === true),
         voip_range: typeof at.voip_range === "boolean" ? at.voip_range : null, top_category: str("top_category"),
+        premium_rate: typeof at.premium_rate === "boolean" ? at.premium_rate : null,
         first_seen: str("first_seen"), last_seen: str("last_seen"), sources: num("sources"),
         checked_at: c?.checked_at ?? null, cached: c ? !!c.cached : null, billed: c ? !!c.billed : null, reason: c?.reason ?? null,
         ...(item.test !== undefined ? { test: item.test } : {}),

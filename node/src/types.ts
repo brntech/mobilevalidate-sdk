@@ -360,19 +360,24 @@ export interface JobResultsParams extends CallOptions {
  */
 export interface SpamAttributes {
   risk_level: Open<"high" | "medium" | "low" | "no_reports">;
-  /** Integer 0–100, higher = more reports. */
+  /** Integer 0–100, higher = more reports or risk signals. */
   risk_score: number;
   reason_regulator?: boolean;
   reason_government?: boolean;
   reason_community?: boolean;
   reason_unassigned?: boolean;
-  /** Hint only (VoIP carrier range); adds no points. */
+  /** Hint only (VoIP carrier range or VoIP number type); adds no points. */
   voip_range?: boolean;
-  top_category?: Open<"debt_relief" | "impersonation" | "robocall" | "medical" | "home_services" | "warranty" | "sms_spam" | "dialer" | "fraud_hacking" | "other">;
+  /** `telemarketing` = the number is in a range designated for telemarketing calls. */
+  top_category?: Open<"debt_relief" | "impersonation" | "robocall" | "medical" | "home_services" | "warranty" | "sms_spam" | "dialer" | "fraud_hacking" | "telemarketing" | "other">;
   /** YYYY-MM */
   first_seen?: string;
   /** YYYY-MM */
   last_seen?: string;
   /** Integer: independent signal classes. */
   sources?: number;
+  /** Premium-rate or international shared-cost number (premium-rate / toll-fraud risk). */
+  premium_rate?: boolean;
+  /** Hint only: personal (call-forwarding) or pager number type; adds no points. */
+  personal_number?: boolean;
 }

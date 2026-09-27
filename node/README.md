@@ -135,14 +135,15 @@ endorsed or sponsored by any of these platforms.
 | `tiktok.registered` | `tiktok` | TikTok | phone | registered | bulk only | — | all |
 | `snapchat.registered` | `snapchat` | Snapchat | phone | registered | bulk only | — | all |
 | `linkedin.registered` | `linkedin` | LinkedIn | phone | registered | bulk only | — | US, IN |
-| `vk.registered` | `vk` | VK | phone | registered | yes | — | RU |
 | `apple.registered` | `apple` | Apple | phone | registered | yes | — | all |
 | `amazon.registered` | `amazon` | Amazon | phone | registered | yes | — | all |
 | `microsoft.registered` | `microsoft` | Microsoft | phone | registered | yes | — | all |
 | `netflix.registered` | `netflix` | Netflix | phone | registered | yes | — | all |
 | `network.carrier` | `carrier` | Mobile network | phone | data (beta) | yes | `line_type`, `carrier`, `original_carrier`, `country` | all |
 | `network.carrier_us` | — | Mobile network | phone | data | bulk only | `line_type`, `carrier` | US, CA |
-| `number.spam` | `spam` | Spam reputation | phone | data | yes | `risk_level`, `risk_score`, `reason_regulator`, `reason_government`, `reason_community`, `reason_unassigned`, `voip_range`, `top_category`, `first_seen`, `last_seen`, `sources` | US, CA, DE |
+| `number.spam` | `spam` | Spam reputation | phone | data | yes | `risk_level`, `risk_score`, `reason_regulator`, `reason_government`, `reason_community`, `reason_unassigned`, `voip_range`, `top_category`, `first_seen`, `last_seen`, `sources`, `premium_rate`, `personal_number` | all |
+| `number.hlr` | `hlr` | Mobile network | phone | data | yes | `status`, `ported`, `roaming`, `network`, `mcc_mnc`, `country` | all |
+| `number.mnp` | `mnp`, `porting` | Mobile network | phone | data | yes | `porting`, `mcc_mnc`, `country` | all |
 | `email.valid` | `email` | E-mail | e-mail | registered | yes | — | all |
 | `gmail.email` | `gmail` | Gmail | e-mail | registered | bulk only | — | all |
 | `outlook.email` | `outlook` | Outlook | e-mail | registered | bulk only | — | all |
@@ -169,8 +170,8 @@ In test mode the test numbers below apply to every phone service. `…006` is a 
 Spam reputation is a limited-access service. Keys without access get `service_disabled`. It tells you whether a number
 appears in spam and nuisance-call **reports**: telecom-regulator actions, government nuisance-call complaint data and
 community spam-report sites. It also tells you whether the number was recently offered as an unassigned number, which
-can mean a spoofed caller ID or a fake lead. Countries: US, CA, DE. Other numbers answer `unsupported_country`, which is
-free. Works in real time and in bulk.
+can mean a spoofed caller ID or a fake lead. Countries: all, except sanctioned countries (Cuba, Iran, North Korea,
+Syria, Russia, Belarus, Venezuela), which answer `unsupported_country` and are free. Works in real time and in bulk.
 
 ```ts
 import type { SpamAttributes } from "mobilevalidate";
